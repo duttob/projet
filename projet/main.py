@@ -39,6 +39,7 @@ class ICreate3Basic(Node):
     def hazard_callback(self, msg):
         """ Callback pour les alertes des capteurs """
         if msg.detections:
+            self.get_logger().info(f"Détection de danger : {msg.detections}")
             self.get_logger().warn("Obstacle détecté ! Arrêt du robot.")
             twist = Twist()  # Stopper le robot
             self.cmd_vel_publisher.publish(twist)
@@ -46,6 +47,7 @@ class ICreate3Basic(Node):
     def ir_intensity_callback(self, msg):
         """ Callback pour les données d'intensité IR """
         for reading in msg.readings:
+            self.get_logger().info(f"Intensité IR : {reading.value}")
             if reading.value > 1000:  
                 self.get_logger().warn(f"Obstacle détecté par IR ! Intensité : {reading.value}")
                 twist = Twist() 
