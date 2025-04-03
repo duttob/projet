@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-from irobot_create_msgs.msg import HazardDetectionVector
+from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector  # Import IrIntensityVector
 
 class ICreate3Basic(Node):
     def __init__(self):
@@ -15,6 +15,13 @@ class ICreate3Basic(Node):
             HazardDetectionVector,
             '/Robot4/hazard_detection',
             self.hazard_callback,
+            10)
+        
+        # Subscriber pour écouter les données d'intensité IR
+        self.ir_intensity_subscriber = self.create_subscription(
+            IrIntensityVector,
+            '/Robot4/ir_intensity',
+            self.ir_intensity_callback,
             10)
         
         # Timer pour envoyer des commandes de mouvement toutes les 2 secondes
@@ -35,6 +42,15 @@ class ICreate3Basic(Node):
             self.get_logger().warn("Obstacle détecté ! Arrêt du robot.")
             twist = Twist()  # Stopper le robot
             self.cmd_vel_publisher.publish(twist)
+
+    def ir_intensity_callback(self, msg):
+        """ Callback pour les données d'intensité IR """
+        for reading in msg.readings:
+            if reading.value > 1000:  
+                self.get_logger().warn(f"Obstacle détecté par IR ! Intensité : {reading.value}")
+                twist = Twist() 
+                self.cmd_vel_publisher.publish(twist)
+                return  
 
 def main(args=None):
     rclpy.init(args=args)
