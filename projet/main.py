@@ -153,13 +153,15 @@ class RobotControlNode(Node):
 
             goal_msg = Dock.Goal()
             self.get_logger().info("Sending docking request...")
-            goal_handle = self.dock_client.send_goal(goal_msg)
+            goal_handle = self.dock_client.send_goal_async(goal_msg)
 
-            result = goal_handle.get_result().result
-            if result.success:
-                self.get_logger().info("Docking completed successfully!")
-            else:
-                self.get_logger().error("Docking failed!")
+            if not goal_handle.accepted:
+                self.get_logger().error("Docking request was rejected!")
+                self.state = States.STOP
+                return
+
+            rclpy.spin_until_future_complete(self, goal_handle)
+            
             self.state = States.STOP
             return
             
