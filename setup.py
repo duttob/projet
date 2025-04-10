@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'icreate3_basic = projet.main:main'  
+            'robot_control_node = projet.main:main'  
         ],
     },
 )
