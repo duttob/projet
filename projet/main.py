@@ -7,6 +7,8 @@ from rclpy.node import Node
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String
 from enum import Enum
+from irobot_create_msgs.action import Dock
+from rclpy.action import ActionClient
 
 class States(Enum):
     STOP = 0
@@ -14,6 +16,8 @@ class States(Enum):
     BACKWARD = 2
     ROTATE_RIGHT = 3
     ROTATE_LEFT = 4
+    DOCKING = 5
+    UNDOCKING = 6
 
 class RobotControlNode(Node):
     def __init__(self):
@@ -24,6 +28,8 @@ class RobotControlNode(Node):
         self.speed_factor = 0.5
         self.state = States.STOP
         self.timer = self.create_timer(0.25, self.control_cycle)
+        
+        self.dock_client = ActionClient(self, Dock, 'Robot4/dock')
         
         self.setup_gui()
         
@@ -137,6 +143,26 @@ class RobotControlNode(Node):
             self.cmd_vel_pub.publish(msg)
             self.status_bar.config(text=f"Statut: Tourner à droite à {self.speed_var.get()}%")
             return
+        if (self.state == States.DOCKING):
+            self.get_logger().info("Docking ...")
+            
+            if not self.dock_client.wait_for_server(timeout_sec=5.0):
+                self.get_logger().error("Dock action server not available!")
+                self.state = States.STOP
+                return
+
+            goal_msg = Dock.Goal()
+            self.get_logger().info("Sending docking request...")
+            goal_handle = self.dock_client.send_goal(goal_msg)
+
+            result = goal_handle.get_result().result
+            if result.success:
+                self.get_logger().info("Docking completed successfully!")
+            else:
+                self.get_logger().error("Docking failed!")
+            self.state = States.STOP
+            return
+            
 
     def move(self, direction):
         if direction == "forward":
@@ -157,6 +183,10 @@ class RobotControlNode(Node):
     def execute_function(self, function_num):
         """ TODO """
         self.status_bar.config(text=f"Statut: Exécution de la fonction F{function_num}")
+        
+        "Dock"
+        if function_num == 1:
+            self.state = States.DOCKING
     
     def on_closing(self):
         stop_msg = Twist()
