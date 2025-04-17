@@ -28,10 +28,18 @@ class RobotControlNode(Node):
         
         self.speed_factor = 0.5
         self.state = States.STOP
-        self.timer = self.create_timer(0.25, self.control_cycle)
+        msg = Twist()
+        msg.linear.x = 0.0
+        msg.linear.y = 0.0
+        msg.linear.z = 0.0
+        msg.angular.x = 0.0
+        msg.angular.y = 0.0
+        msg.angular.z = 0.0
+        self.timer = self.create_timer(0.25, self.control_cycle(msg))
         
         self.dock_client = ActionClient(self, Dock, 'Robot4/dock')
         #self.undock_client = ActionClient(self,Undock, 'Robot4/undock')
+        
         
         
         self.hazard_subscriber = self.create_subscription(
@@ -112,14 +120,7 @@ class RobotControlNode(Node):
         for i in range(3):
             prog_frame.columnconfigure(i, weight=1)
             
-    def control_cycle(self):
-        msg = Twist()
-        msg.linear.x = 0.0
-        msg.linear.y = 0.0
-        msg.linear.z = 0.0
-        msg.angular.x = 0.0
-        msg.angular.y = 0.0
-        msg.angular.z = 0.0
+    def control_cycle(self,msg):
 
         speed = self.speed_factor*0.5
         if (self.state == States.STOP):
