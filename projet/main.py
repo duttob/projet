@@ -106,13 +106,12 @@ class RobotControlNode(Node):
         self.speed_label.config(text=f"{self.speed_var.get()}%")
 
     def timer_callback(self):
-        if self.blocked:
-            self.stop_robot()
-            return
-
         if self.manual_override:
             self.handle_manual_control()
         else:
+            if self.blocked:
+                self.stop_robot()
+                return
             self.handle_fsm()
 
     def handle_manual_control(self):
