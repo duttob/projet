@@ -9,7 +9,7 @@ from std_msgs.msg import String
 from enum import Enum
 from irobot_create_msgs.action import Dock
 from rclpy.action import ActionClient
-from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector  # Import IrIntensityVector
+from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector  
 from rclpy.qos import qos_profile_sensor_data
 
 class States(Enum):
@@ -18,9 +18,7 @@ class States(Enum):
     BACKWARD = 2
     ROTATE_RIGHT = 3
     ROTATE_LEFT = 4
-    DOCKING = 5
-    UNDOCKING = 6
-    ROAMMING = 7
+    ROAMMING = 5
 
 class RobotControlNode(Node):
     def __init__(self):
@@ -33,7 +31,7 @@ class RobotControlNode(Node):
         self.timer = self.create_timer(0.25, self.control_cycle)
         
         self.dock_client = ActionClient(self, Dock, 'Robot4/dock')
-        self.undock_client = ActionClient(self, Undock, 'Robot4/undock')
+        #self.undock_client = ActionClient(self,Undock, 'Robot4/undock')
         
         
         self.hazard_subscriber = self.create_subscription(
@@ -162,34 +160,6 @@ class RobotControlNode(Node):
             self.cmd_vel_pub.publish(msg)
             self.status_bar.config(text=f"Statut: Tourner à droite à {self.speed_var.get()}%")
             return
-        if (self.state == States.DOCKING):
-            self.get_logger().info("Docking ...")
-            
-            if not self.dock_client.wait_for_server(timeout_sec=5.0):
-                self.get_logger().error("Dock action server not available!")
-                self.state = States.STOP
-                return
-            goal_msg = Dock.Goal()
-            self.get_logger().info("Sending docking request...")
-            self.dock_client.send_goal_async(goal_msg)
-
-            self.state = States.STOP
-            
-            return
-        if (self.state == States.UNDOCKING):
-            
-            self.get_logger().info("Undocking ...")
-            
-            if not self.dock_client.wait_for_server(timeout_sec=5.0):
-                self.get_logger().error("Dock action server not available!")
-                self.state = States.STOP
-                return
-            goal_msg = Undock.Goal()
-            self.get_logger().info("Sending undocking request...")
-            self.undock_client.send_goal_async(goal_msg)
-            self.state = States.STOP
-            
-            return
         
         if (self.state == States.ROAMMING):
             self.get_logger().info("Roaming ...")
@@ -217,10 +187,35 @@ class RobotControlNode(Node):
     def execute_function(self, function_num):
         """ TODO """
         self.status_bar.config(text=f"Statut: Exécution de la fonction F{function_num}")
-        
-        "Dock"
+    
         if function_num == 1:
-            self.state = States.DOCKING
+            self.state = States.STOP
+            self.get_logger().info("Docking ...")
+            
+            if not self.dock_client.wait_for_server(timeout_sec=5.0):
+                self.get_logger().error("Dock action server not available!")
+                self.state = States.STOP
+                return
+            goal_msg = Dock.Goal()
+            self.get_logger().info("Sending docking request...")
+            self.dock_client.send_goal_async(goal_msg)
+
+        if function_num == 2:
+            self.state = States.STOP
+            self.get_logger().info("Undocking ...")
+            
+            if not self.dock_client.wait_for_server(timeout_sec=5.0):
+                self.get_logger().error("Dock action server not available!")
+                self.state = States.STOP
+                return
+            #goal_msg = Undock.Goal()
+            #self.get_logger().info("Sending undocking request...")
+            #self.undock_client.send_goal_async(goal_msg)
+        
+        if function_num == 3:
+            self.state = States.STOP
+            self.get_logger().info("Starting roaming ...")
+            self.state = States.ROAMMING
     
     def on_closing(self):
         stop_msg = Twist()
