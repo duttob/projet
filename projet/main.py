@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+import random
 import threading
 import time
 import rclpy
@@ -30,6 +31,8 @@ class RobotControlNode(Node):
 
         # State variables
         self.fsm_state = 'undock'
+        self.fsm_start_time = time.time()
+        self.avoid_timer = 0
         self.manual_override = False
         self.manual_command = 'stop'
         self.speed_factor = 0.5
@@ -130,14 +133,48 @@ class RobotControlNode(Node):
         self.cmd_vel_pub.publish(msg)
 
     def handle_fsm(self):
+        twist = Twist()
+        speed = self.speed_factor * 0.5
+
         if self.fsm_state == 'undock' and not self.is_undocking:
             self.send_undock_goal()
             self.is_undocking = True
-        elif self.fsm_state == 'navigate':
-            msg = Twist()
-            msg.linear.x = 0.2
-            self.cmd_vel_pub.publish(msg)
-            self.status_bar.config(text="Statut: Autonome — Avance")
+
+        elif self.fsm_state == 'wander':
+            if time.time() - self.fsm_start_time > 20:  # Wander for 20s
+                self.fsm_state = 'dock'
+                self.status_bar.config(text="Statut: FSM → dock")
+                return
+            twist.linear.x = speed
+            self.cmd_vel_pub.publish(twist)
+            self.status_bar.config(text="Statut: FSM → avancer")
+
+        elif self.fsm_state == 'avoid':
+            if time.time() < self.avoid_timer:
+                twist.angular.z = random.choice([-1.0, 1.0]) * speed
+                self.cmd_vel_pub.publish(twist)
+                self.status_bar.config(text="Statut: FSM → évitement")
+            else:
+                self.fsm_state = 'wander'
+                self.fsm_start_time = time.time()  # resume wander
+
+        elif self.fsm_state == 'dock':
+            self.send_dock_goal()
+            self.fsm_state = 'done'
+
+        elif self.fsm_state == 'done':
+            self.status_bar.config(text="Statut: FSM terminé")
+
+
+    def send_dock_goal(self):
+        if not self.dock_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().error("Dock server not available")
+            self.status_bar.config(text="Dock échoué")
+            return
+        self.get_logger().info("Sending dock goal")
+        goal = Dock.Goal()
+        self.dock_client.send_goal_async(goal).add_done_callback(lambda f: self.status_bar.config(text="Dock envoyé"))
+
 
     def send_undock_goal(self):
         if not self.undock_client.wait_for_server(timeout_sec=2.0):
@@ -149,11 +186,13 @@ class RobotControlNode(Node):
         goal = Undock.Goal()
         self.undock_client.send_goal_async(goal).add_done_callback(self.undock_done)
 
+
     def undock_done(self, future):
         result = future.result()
         self.get_logger().info("Undock terminé")
         self.status_bar.config(text="Statut: Undock terminé")
         self.fsm_state = 'navigate'
+
 
     def dock(self):
         if not self.dock_client.wait_for_server(timeout_sec=2.0):
@@ -171,32 +210,37 @@ class RobotControlNode(Node):
 
 
     def hazard_callback(self, msg):
-        if msg.detections:
-            self.get_logger().warn("Hazard detected! Stopping.")
+        if self.manual_override:
+            return
+        if msg.detections and self.fsm_state == 'wander':
+            self.get_logger().warn("Hazard detected! Avoiding.")
             self.stop_robot()
-            self.blocked = True
-            self.status_bar.config(text="Statut: Obstacle détecté")
-        else:
-            self.blocked = False  # Aucun obstacle détecté
-
+            self.blocked = False  # Clear blocked
+            self.fsm_state = 'avoid'
+            self.avoid_timer = time.time() + 2.0
 
 
     def ir_callback(self, msg):
+        if self.manual_override:
+            return
         for reading in msg.readings:
-            if reading.value > 40:
-                self.get_logger().warn("IR intense: stop")
+            if reading.value > 1000 and self.fsm_state == 'wander':
+                self.get_logger().warn("High IR detected! Avoiding.")
                 self.stop_robot()
-                self.blocked = True
-                self.status_bar.config(text="Statut: Surface réfléchissante détectée")
+                self.blocked = False
+                self.fsm_state = 'avoid'
+                self.avoid_timer = time.time() + 2.0
                 return
-        self.blocked = False  # Lecture IR revenue à la normale
+
 
     def stop_robot(self):
         self.cmd_vel_pub.publish(Twist())
 
+
     def on_closing(self):
         self.stop_robot()
         self.root.destroy()
+
 
     def spin(self):
         def ros_spin():
