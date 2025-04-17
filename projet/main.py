@@ -8,6 +8,7 @@ from rclpy.action import ActionClient
 from geometry_msgs.msg import Twist
 from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector
 from irobot_create_msgs.action import Dock, Undock
+from rclpy.qos import qos_profile_sensor_data
 from enum import Enum
 
 
@@ -23,9 +24,9 @@ class RobotControlNode(Node):
 
         # Subscriptions for obstacle/hazard detection
         self.hazard_sub = self.create_subscription(
-            HazardDetectionVector, '/Robot4/hazard_detection', self.hazard_callback, 10)
+            HazardDetectionVector, '/Robot4/hazard_detection', self.hazard_callback, qos_profile_sensor_data)
         self.ir_sub = self.create_subscription(
-            IrIntensityVector, '/Robot4/ir_intensity', self.ir_callback, 10)
+            IrIntensityVector, '/Robot4/ir_intensity', self.ir_callback, qos_profile_sensor_data)
 
         # State variables
         self.fsm_state = 'undock'
