@@ -209,12 +209,13 @@ class RobotControlNode(Node):
         self.send_undock_goal()
 
 
-    # def hazard_callback(self, msg):
-    #     if self.manual_override:
-    #         return
-    #     if msg.detections and self.fsm_state == 'wander':
-    #         self.get_logger().warn("Hazard detected! Avoiding.")
-    #         self.fsm_state = 'avoid'
+    def hazard_callback(self, msg):
+        # if self.manual_override:
+        #     return
+        # if msg.detections and self.fsm_state == 'wander':
+        #     self.get_logger().warn("Hazard detected! Avoiding.")
+        #     self.fsm_state = 'avoid'
+        return
 
 
     def ir_callback(self, msg):
