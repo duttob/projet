@@ -26,6 +26,8 @@ class RobotControlNode(Node):
         
         self.cmd_vel_pub = self.create_publisher(Twist, 'Robot4/cmd_vel', 10)
         
+        self.setup_gui()
+        
         self.speed_factor = 0.5
         self.state = States.STOP
         msg = Twist()
@@ -56,8 +58,6 @@ class RobotControlNode(Node):
             '/Robot4/ir_intensity',
             self.control_cycle,
             qos_profile_sensor_data)
-        
-        self.setup_gui()
         
     def setup_gui(self):
         self.root = tk.Tk()
