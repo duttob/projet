@@ -30,16 +30,7 @@ class RobotControlNode(Node):
         
         self.speed_factor = 0.5
         self.state = States.STOP
-        msg = Twist()
-        msg.linear.x = 0.0
-        msg.linear.y = 0.0
-        msg.linear.z = 0.0
-        msg.angular.x = 0.0
-        msg.angular.y = 0.0
-        msg.angular.z = 0.0
         
-        self.msgdections= HazardDetectionVector()
-        self.msgir= IrIntensityVector() 
         self.timer = self.create_timer(0.25, self.control_cycle())
         
         self.dock_client = ActionClient(self, Dock, 'Robot4/dock')
@@ -50,14 +41,22 @@ class RobotControlNode(Node):
         self.hazard_subscriber = self.create_subscription(
             HazardDetectionVector,
             '/Robot4/hazard_detection',
-            self.control_cycle,
+            self.hazard_detection_callback,
             qos_profile_sensor_data)
         
         self.ir_subscriber = self.create_subscription(
             IrIntensityVector,
             '/Robot4/ir_intensity',
-            self.control_cycle,
+            self.ir_intensity_callback,
             qos_profile_sensor_data)
+    
+    def hazard_detection_callback(self, msg):
+        self.msgdections = msg  
+        self.control_cycle() 
+
+    def ir_intensity_callback(self, msg):
+        self.msgir = msg 
+        self.control_cycle()  
         
     def setup_gui(self):
         self.root = tk.Tk()
@@ -129,6 +128,13 @@ class RobotControlNode(Node):
         if (self.state == States.STOP):
             self.status_bar.config(text="Statut: Arrêt")
             return
+        msg = Twist()
+        msg.linear.x = 0.0
+        msg.linear.y = 0.0
+        msg.linear.z = 0.0
+        msg.angular.x = 0.0
+        msg.angular.y = 0.0
+        msg.angular.z = 0.0
 
         if (self.state == States.FORWARD):
             self.get_logger().info("Moving forward ...")
