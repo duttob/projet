@@ -165,11 +165,6 @@ class RobotControlNode(Node):
         self.fsm_state = 'navigate'
 
     def dock(self):
-        if not self.dock_client.wait_for_server(timeout_sec=2.0):
-            self.get_logger().error("Dock server not available")
-            self.status_bar.config(text="Dock échoué")
-            return
-        
         msg = Twist()
         speed = self.speed_factor * 0.5
 
@@ -183,6 +178,11 @@ class RobotControlNode(Node):
                 msg.linear.x = -speed
             elif (move == self.RIGHT):
                 msg.angular.z = speed
+
+        if not self.dock_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().error("Dock server not available")
+            self.status_bar.config(text="Dock échoué")
+            return
                 
 
         self.get_logger().info("Sending dock goal")
