@@ -1,3 +1,4 @@
+import random
 import tkinter as tk
 from tkinter import ttk
 import threading
@@ -13,6 +14,14 @@ from enum import Enum
 
 
 class RobotControlNode(Node):
+
+    FORWARD = 0
+    LEFT = 1
+    RIGHT = 2
+    BACKWARD = 3
+
+    moveList = []
+
     def __init__(self):
         super().__init__('robot_control_node')
         self.get_logger().info("Robot control node started")
@@ -115,12 +124,16 @@ class RobotControlNode(Node):
         speed = self.speed_factor * 0.5
 
         if self.manual_command == "forward":
+            self.moveList.append(self.FORWARD)
             msg.linear.x = speed
         elif self.manual_command == "backward":
+            self.moveList.append(self.BACKWARD)
             msg.linear.x = -speed
         elif self.manual_command == "rotate_left":
+            self.moveList.append(self.LEFT)
             msg.angular.z = speed
         elif self.manual_command == "rotate_right":
+            self.moveList.append(self.RIGHT)
             msg.angular.z = -speed
 
         self.cmd_vel_pub.publish(msg)
@@ -156,6 +169,21 @@ class RobotControlNode(Node):
             self.get_logger().error("Dock server not available")
             self.status_bar.config(text="Dock échoué")
             return
+        
+        msg = Twist()
+        speed = self.speed_factor * 0.5
+
+        while(self.moveList):
+            move = self.moveList.pop()
+            if (move == self.FORWARD):
+                msg.linear.x = speed
+            elif (move == self.LEFT):
+                msg.angular.z = -speed
+            elif (move == self.BACKWARD):
+                msg.linear.x = -speed
+            elif (move == self.RIGHT):
+                msg.angular.z = speed
+                
 
         self.get_logger().info("Sending dock goal")
         goal = Dock.Goal()
