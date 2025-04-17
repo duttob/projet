@@ -34,6 +34,7 @@ class RobotControlNode(Node):
         self.manual_command = 'stop'
         self.speed_factor = 0.5
         self.is_undocking = False
+        self.blocked = False
 
         self.timer = self.create_timer(0.25, self.timer_callback)
 
@@ -105,6 +106,10 @@ class RobotControlNode(Node):
         self.speed_label.config(text=f"{self.speed_var.get()}%")
 
     def timer_callback(self):
+        if self.blocked:
+            self.stop_robot()
+            return
+
         if self.manual_override:
             self.handle_manual_control()
         else:
@@ -161,22 +166,31 @@ class RobotControlNode(Node):
         goal = Dock.Goal()
         self.dock_client.send_goal_async(goal).add_done_callback(lambda f: self.status_bar.config(text="Dock envoyé"))
 
+
     def undock(self):
         self.send_undock_goal()
+
 
     def hazard_callback(self, msg):
         if msg.detections:
             self.get_logger().warn("Hazard detected! Stopping.")
             self.stop_robot()
+            self.blocked = True
             self.status_bar.config(text="Statut: Obstacle détecté")
+        else:
+            self.blocked = False  # Aucun obstacle détecté
+
+
 
     def ir_callback(self, msg):
         for reading in msg.readings:
             if reading.value > 1000:
                 self.get_logger().warn("IR intense: stop")
                 self.stop_robot()
+                self.blocked = True
                 self.status_bar.config(text="Statut: Surface réfléchissante détectée")
                 return
+        self.blocked = False  # Lecture IR revenue à la normale
 
     def stop_robot(self):
         self.cmd_vel_pub.publish(Twist())
