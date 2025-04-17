@@ -221,11 +221,17 @@ class RobotControlNode(Node):
     def ir_callback(self, msg):
         if self.manual_override:
             return
-        for reading in msg.readings:
-            if reading.value > 40 and self.fsm_state == 'wander':
-                self.get_logger().warn("High IR detected! Avoiding.")
+
+        # Check if any reading exceeds the danger threshold
+        danger = any(reading.value > 40 for reading in msg.readings)
+
+        if danger:
+            if self.fsm_state != 'avoid':
+                self.get_logger().warn("High IR detected! Switching to avoid.")
                 self.fsm_state = 'avoid'
-            else: 
+        else:
+            if self.fsm_state == 'avoid':
+                self.get_logger().info("IR clear. Switching back to wander.")
                 self.fsm_state = 'wander'
 
 
