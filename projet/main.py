@@ -35,7 +35,7 @@ class RobotControlNode(Node):
         self.avoid_timer = 0
         self.manual_override = False
         self.manual_command = 'stop'
-        self.speed_factor = 0.5
+        self.speed_factor = 1.0
         self.is_undocking = False
         self.blocked = False
 
@@ -134,7 +134,7 @@ class RobotControlNode(Node):
 
     def handle_fsm(self):
         twist = Twist()
-        speed = self.speed_factor * 0.5
+        speed = self.speed_factor
 
         if self.fsm_state == 'undock' and not self.is_undocking:
             self.send_undock_goal()
