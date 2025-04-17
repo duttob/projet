@@ -39,7 +39,9 @@ class RobotControlNode(Node):
         self.is_undocking = False
         self.blocked = False
 
-        self.timer = self.create_timer(0.25, self.timer_callback)
+        self.timer = self.create_timer(1, self.timer_callback)
+        
+        self.listactions = {}
 
         # GUI setup
         self.setup_gui()
@@ -130,6 +132,7 @@ class RobotControlNode(Node):
         elif self.manual_command == "rotate_right":
             msg.angular.z = -speed
 
+        self.actionslist.append(self.msg)
         self.cmd_vel_pub.publish(msg)
 
     def handle_fsm(self):
@@ -177,7 +180,7 @@ class RobotControlNode(Node):
 
 
     def send_undock_goal(self):
-        if not self.undock_client.wait_for_server(timeout_sec=2.0):
+        if not self.undock_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().error("Undock server not available")
             self.status_bar.config(text="Undock échoué")
             return
@@ -195,7 +198,14 @@ class RobotControlNode(Node):
 
 
     def dock(self):
-        if not self.dock_client.wait_for_server(timeout_sec=2.0):
+        if(self.fsm_state != 'wander'):
+            for action in self.listactions:
+                action.linear.x = -action.linear.x
+                action.angular.z = -action.angular.z
+                self.cmd_vel_pub.publish(action)
+                
+        
+        if not self.dock_client.wait_for_server(timeout_sec=5.0):
             self.get_logger().error("Dock server not available")
             self.status_bar.config(text="Dock échoué")
             return
@@ -224,7 +234,7 @@ class RobotControlNode(Node):
         if self.manual_override:
             return
         for reading in msg.readings:
-            if reading.value > 1000 and self.fsm_state == 'wander':
+            if reading.value > 40 and self.fsm_state == 'wander':
                 self.get_logger().warn("High IR detected! Avoiding.")
                 self.stop_robot()
                 self.blocked = False
