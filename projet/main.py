@@ -37,13 +37,13 @@ class RobotControlNode(Node):
         self.hazard_subscriber = self.create_subscription(
             HazardDetectionVector,
             '/Robot4/hazard_detection',
-            self.control_cycle,
+            self.callback,
             qos_profile_sensor_data)
         
         self.ir_subscriber = self.create_subscription(
             IrIntensityVector,
             '/Robot4/ir_intensity',
-            self.control_cycle,
+            self.callback,
             qos_profile_sensor_data)
         
         self.setup_gui()
@@ -112,6 +112,11 @@ class RobotControlNode(Node):
         for i in range(3):
             prog_frame.columnconfigure(i, weight=1)
             
+    def callback(self, msg):
+        if(msg.detections):
+            self.get_logger().info(f"Détection de danger : {msg.detections}")
+            self.get_logger().warn("Obstacle détecté ! Arrêt du robot.")
+    
     def control_cycle(self):
         msg = Twist()
         msg.linear.x = 0.0
@@ -132,10 +137,7 @@ class RobotControlNode(Node):
             msg.angular.z = 0.0
             self.cmd_vel_pub.publish(msg)
             self.status_bar.config(text=f"Statut: Avancer à {self.speed_var.get()}%")
-            if(msg.detections):
-                self.get_logger().info(f"Détection de danger : {msg.detections}")
-                self.get_logger().warn("Obstacle détecté ! Arrêt du robot.")
-    
+            callback(self, msg)
             return
         
         if (self.state == States.BACKWARD):
