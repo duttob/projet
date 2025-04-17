@@ -4,274 +4,205 @@ import threading
 import time
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
-from std_msgs.msg import String
-from enum import Enum
-from irobot_create_msgs.action import Dock, Undock
 from rclpy.action import ActionClient
+from geometry_msgs.msg import Twist
+from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector
+from irobot_create_msgs.action import Dock, Undock
+from enum import Enum
 
-class States(Enum):
-    STOP = 0
-    FORWARD = 1
-    BACKWARD = 2
-    ROTATE_RIGHT = 3
-    ROTATE_LEFT = 4
-    DOCKING = 5
-    UNDOCKING = 6
 
 class RobotControlNode(Node):
     def __init__(self):
         super().__init__('robot_control_node')
+        self.get_logger().info("Robot control node started")
 
-        self.cmd_vel_pub = self.create_publisher(Twist, 'Robot4/cmd_vel', 10)
+        # Publishers and Actions
+        self.cmd_vel_pub = self.create_publisher(Twist, '/Robot4/cmd_vel', 10)
+        self.dock_client = ActionClient(self, Dock, '/Robot4/dock')
+        self.undock_client = ActionClient(self, Undock, '/Robot4/undock')
 
+        # Subscriptions for obstacle/hazard detection
+        self.hazard_sub = self.create_subscription(
+            HazardDetectionVector, '/Robot4/hazard_detection', self.hazard_callback, 10)
+        self.ir_sub = self.create_subscription(
+            IrIntensityVector, '/Robot4/ir_intensity', self.ir_callback, 10)
+
+        # State variables
+        self.fsm_state = 'undock'
+        self.manual_override = False
+        self.manual_command = 'stop'
         self.speed_factor = 0.5
-        self.state = States.STOP
-        self.timer = self.create_timer(0.25, self.control_cycle)
+        self.is_undocking = False
 
-        self.undock_client = ActionClient(self, Undock, 'Robot4/dock')
-        self.dock_client = ActionClient(self, Dock, 'Robot4/dock')
+        self.timer = self.create_timer(0.25, self.timer_callback)
 
+        # GUI setup
         self.setup_gui()
-
 
     def setup_gui(self):
         self.root = tk.Tk()
-        self.root.title("ROS2 Robot Control")
+        self.root.title("ROS2 Robot Hybrid Control")
         self.root.geometry("600x400")
         self.root.configure(bg="#2c3e50")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
-        self.main_frame = tk.Frame(self.root, bg="#34495e")
-        self.main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        frame = tk.Frame(self.root, bg="#34495e")
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        self.setup_control_frame()
-        self.setup_programmable_buttons()
+        # Mode toggle
+        self.mode_button = ttk.Button(frame, text="Passer en manuel", command=self.toggle_mode)
+        self.mode_button.pack(pady=10)
 
-        self.status_bar = tk.Label(self.root, text="Statut: ROS2 Node prêt", bd=1, relief=tk.SUNKEN, anchor=tk.W, bg="#7f8c8d", fg="white")
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-
-
-    def setup_control_frame(self):
-        control_frame = tk.LabelFrame(self.main_frame, text="Contrôles", padx=5, pady=5, bg="#34495e", fg="white")
+        # Manual controls
+        control_frame = tk.LabelFrame(frame, text="Contrôles manuels", bg="#34495e", fg="white")
         control_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
+
         dir_frame = tk.Frame(control_frame, bg="#34495e")
-        dir_frame.pack(expand=True, pady=20)
-        
-        fwd_btn = ttk.Button(dir_frame, text="▲", width=8, command=lambda: self.move("forward"))
-        fwd_btn.grid(row=0, column=1, padx=10, pady=5)
-        
-        mid_frame = tk.Frame(dir_frame, bg="#34495e")
-        mid_frame.grid(row=1, column=0, columnspan=3)
-        
-        left_btn = ttk.Button(mid_frame, text="◄", width=8, command=lambda: self.move("rotate_left"))
-        left_btn.grid(row=0, column=0, padx=10, pady=5)
-        
-        stop_btn = ttk.Button(mid_frame, text="■", width=8, command=lambda: self.move("stop"))
-        stop_btn.grid(row=0, column=1, padx=10, pady=5)
-        
-        right_btn = ttk.Button(mid_frame, text="►", width=8, command=lambda: self.move("rotate_right"))
-        right_btn.grid(row=0, column=2, padx=10, pady=5)
-        
-        back_btn = ttk.Button(dir_frame, text="▼", width=8, command=lambda: self.move("backward"))
-        back_btn.grid(row=2, column=1, padx=10, pady=5)
-        
+        dir_frame.pack(pady=10)
+
+        ttk.Button(dir_frame, text="▲", width=8, command=lambda: self.set_manual_command("forward")).grid(row=0, column=1)
+        ttk.Button(dir_frame, text="◄", width=8, command=lambda: self.set_manual_command("rotate_left")).grid(row=1, column=0)
+        ttk.Button(dir_frame, text="■", width=8, command=lambda: self.set_manual_command("stop")).grid(row=1, column=1)
+        ttk.Button(dir_frame, text="►", width=8, command=lambda: self.set_manual_command("rotate_right")).grid(row=1, column=2)
+        ttk.Button(dir_frame, text="▼", width=8, command=lambda: self.set_manual_command("backward")).grid(row=2, column=1)
+
+        # Speed control
         speed_frame = tk.Frame(control_frame, bg="#34495e")
         speed_frame.pack(fill=tk.X, pady=10)
-        
+
         tk.Label(speed_frame, text="Vitesse:", bg="#34495e", fg="white").pack(side=tk.LEFT, padx=5)
-        
         self.speed_var = tk.IntVar(value=50)
-        speed_slider = ttk.Scale(speed_frame, from_=0, to=100, orient=tk.HORIZONTAL, 
-                               variable=self.speed_var, command=self.update_speed)
+        speed_slider = ttk.Scale(speed_frame, from_=0, to=100, variable=self.speed_var,
+                                 command=self.update_speed, orient=tk.HORIZONTAL)
         speed_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
-        self.speed_label = tk.Label(speed_frame, text="50%", bg="#34495e", fg="white", width=5)
+        self.speed_label = tk.Label(speed_frame, text="50%", bg="#34495e", fg="white")
         self.speed_label.pack(side=tk.LEFT, padx=5)
 
+        # Programmable buttons
+        prog_frame = tk.LabelFrame(frame, text="Fonctions", bg="#34495e", fg="white")
+        prog_frame.pack(fill=tk.X, padx=5, pady=5)
 
-    def setup_programmable_buttons(self):
-        prog_frame = tk.LabelFrame(self.main_frame, text="Fonctions programmables", padx=5, pady=5, bg="#34495e", fg="white")
-        prog_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=5)
+        ttk.Button(prog_frame, text="Dock", command=self.dock).pack(side=tk.LEFT, padx=10, pady=5)
+        ttk.Button(prog_frame, text="Undock", command=self.undock).pack(side=tk.LEFT, padx=10, pady=5)
 
-        for i in range(6):
-            btn = ttk.Button(prog_frame, text=f"F{i+1}", command=lambda i=i: self.execute_function(i+1))
-            btn.grid(row=i//3, column=i%3, padx=10, pady=5, sticky="ew")
+        self.status_bar = tk.Label(self.root, text="Statut: Initialisation", bg="#7f8c8d", fg="white", anchor=tk.W)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
-        for i in range(3):
-            prog_frame.columnconfigure(i, weight=1)
+    def toggle_mode(self):
+        self.manual_override = not self.manual_override
+        mode = "manuel" if self.manual_override else "autonome"
+        self.status_bar.config(text=f"Mode: {mode}")
+        self.mode_button.config(text="Passer en auto" if self.manual_override else "Passer en manuel")
 
-
-    def control_cycle(self):
-        msg = Twist()
-        msg.linear.x = 0.0
-        msg.linear.y = 0.0
-        msg.linear.z = 0.0
-        msg.angular.x = 0.0
-        msg.angular.y = 0.0
-        msg.angular.z = 0.0
-
-        speed = self.speed_factor*0.5
-        if (self.state == States.STOP):
-            self.status_bar.config(text="Statut: Arrêt")
-            return
-
-        if (self.state == States.FORWARD):
-            self.get_logger().info("Moving forward ...")
-            msg.linear.x = speed
-            msg.angular.z = 0.0
-            self.cmd_vel_pub.publish(msg)
-            self.status_bar.config(text=f"Statut: Avancer à {self.speed_var.get()}%")
-            return
-
-        if (self.state == States.BACKWARD):
-            self.get_logger().info("Moving backward ...")
-            msg.linear.x = -speed
-            msg.angular.z = 0.0
-            self.status_bar.config(text=f"Statut: Reculer à {self.speed_var.get()}%")
-            self.cmd_vel_pub.publish(msg)
-            return
-
-        if (self.state == States.ROTATE_LEFT):
-            self.get_logger().info("Rotating left ...")
-            msg.linear.x = 0.0
-            msg.angular.z = 1.0
-            self.status_bar.config(text=f"Statut: Tourner à gauche à {self.speed_var.get()}%")
-            self.cmd_vel_pub.publish(msg)
-            return
-
-        if (self.state == States.ROTATE_RIGHT):
-            self.get_logger().info("Rotating right ...")
-            msg.linear.x = 0.0
-            msg.angular.z = -1.0
-            self.cmd_vel_pub.publish(msg)
-            self.status_bar.config(text=f"Statut: Tourner à droite à {self.speed_var.get()}%")
-            return
-        if (self.state == States.DOCKING):
-            self.get_logger().info("Docking ...")
-            
-            if not self.dock_client.wait_for_server(timeout_sec=5.0):
-                self.get_logger().error("Dock action server not available!")
-                self.state = States.STOP
-                return
-
-            goal_msg = Dock.Goal()
-            self.get_logger().info("Sending docking request...")
-            goal= self.dock_client.send_goal_async(goal_msg)
-
-            rclpy.spin_until_future_complete(self, goal)
-
-            self.state = States.STOP
-            return
-
-        if self.state == States.UNDOCKING:
-            self.get_logger().info("Undocking ...")
-
-            if not self.undock_client.wait_for_server(timeout_sec=5.0):
-                self.get_logger().error("Undock action server not available!")
-                self.state = States.STOP
-                return
-
-            goal_msg = Undock.Goal()
-            self.get_logger().info("Sending undocking request...")
-            goal = self.undock_client.send_goal_async(goal_msg)
-
-            rclpy.spin_until_future_complete(self, goal)
-
-            self.status_bar.config(text="Statut: Undocking terminé")
-            self.state = States.STOP
-            return
-
-
-    def move(self, direction):
-        if direction == "forward":
-            self.state = States.FORWARD
-        elif direction == "backward":
-            self.state = States.BACKWARD
-        elif direction == "rotate_left":
-            self.state = States.ROTATE_LEFT
-        elif direction == "rotate_right":
-            self.state = States.ROTATE_RIGHT
-        elif direction == "stop":
-            self.state = States.STOP
-
-
-    def dock(self):
-        if not self.dock_client.wait_for_server(timeout_sec=2.0):
-            self.get_logger().error("Dock action server not available")
-            self.status_bar.config(text="Statut: Dock échoué (serveur non dispo)")
-            return
-
-        goal_msg = Dock.Goal()
-        self.status_bar.config(text="Statut: Docking...")
-        self.get_logger().info("Sending docking goal...")
-
-        self.dock_client.send_goal_async(goal_msg).add_done_callback(
-            lambda future: self.get_logger().info("Docking goal response received.")
-        )
-
-    def undock(self):
-        if not self.undock_client.wait_for_server(timeout_sec=2.0):
-            self.get_logger().error("Undock action server not available")
-            self.status_bar.config(text="Statut: Undock échoué (serveur non dispo)")
-            return
-
-        goal_msg = Undock.Goal()
-        self.status_bar.config(text="Statut: Undocking...")
-        self.get_logger().info("Sending undocking goal...")
-
-        self.undock_client.send_goal_async(goal_msg).add_done_callback(
-            lambda future: self.get_logger().info("Undocking goal response received.")
-        )
-
+    def set_manual_command(self, direction):
+        self.manual_command = direction
+        self.status_bar.config(text=f"Commande manuelle: {direction}")
 
     def update_speed(self, *args):
         self.speed_factor = self.speed_var.get() / 100.0
         self.speed_label.config(text=f"{self.speed_var.get()}%")
 
+    def timer_callback(self):
+        if self.manual_override:
+            self.handle_manual_control()
+        else:
+            self.handle_fsm()
 
-    def execute_function(self, function_num):
-        self.status_bar.config(text=f"Statut: Exécution de la fonction F{function_num}")
+    def handle_manual_control(self):
+        msg = Twist()
+        speed = self.speed_factor * 0.5
 
-        if function_num == 1:
-            self.dock()
-        elif function_num == 2:
-            self.undock()
+        if self.manual_command == "forward":
+            msg.linear.x = speed
+        elif self.manual_command == "backward":
+            msg.linear.x = -speed
+        elif self.manual_command == "rotate_left":
+            msg.angular.z = speed
+        elif self.manual_command == "rotate_right":
+            msg.angular.z = -speed
 
+        self.cmd_vel_pub.publish(msg)
+
+    def handle_fsm(self):
+        if self.fsm_state == 'undock' and not self.is_undocking:
+            self.send_undock_goal()
+            self.is_undocking = True
+        elif self.fsm_state == 'navigate':
+            msg = Twist()
+            msg.linear.x = 0.2
+            self.cmd_vel_pub.publish(msg)
+            self.status_bar.config(text="Statut: Autonome — Avance")
+
+    def send_undock_goal(self):
+        if not self.undock_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().error("Undock server not available")
+            self.status_bar.config(text="Undock échoué")
+            return
+
+        self.get_logger().info("Sending undock goal")
+        goal = Undock.Goal()
+        self.undock_client.send_goal_async(goal).add_done_callback(self.undock_done)
+
+    def undock_done(self, future):
+        result = future.result()
+        self.get_logger().info("Undock terminé")
+        self.status_bar.config(text="Statut: Undock terminé")
+        self.fsm_state = 'navigate'
+
+    def dock(self):
+        if not self.dock_client.wait_for_server(timeout_sec=2.0):
+            self.get_logger().error("Dock server not available")
+            self.status_bar.config(text="Dock échoué")
+            return
+
+        self.get_logger().info("Sending dock goal")
+        goal = Dock.Goal()
+        self.dock_client.send_goal_async(goal).add_done_callback(lambda f: self.status_bar.config(text="Dock envoyé"))
+
+    def undock(self):
+        self.send_undock_goal()
+
+    def hazard_callback(self, msg):
+        if msg.detections:
+            self.get_logger().warn("Hazard detected! Stopping.")
+            self.stop_robot()
+            self.status_bar.config(text="Statut: Obstacle détecté")
+
+    def ir_callback(self, msg):
+        for reading in msg.readings:
+            if reading.value > 1000:
+                self.get_logger().warn("IR intense: stop")
+                self.stop_robot()
+                self.status_bar.config(text="Statut: Surface réfléchissante détectée")
+                return
+
+    def stop_robot(self):
+        self.cmd_vel_pub.publish(Twist())
 
     def on_closing(self):
-        stop_msg = Twist()
-        self.cmd_vel_pub.publish(stop_msg)
+        self.stop_robot()
         self.root.destroy()
 
-
     def spin(self):
-        def process_ros():
+        def ros_spin():
             while rclpy.ok():
                 rclpy.spin_once(self, timeout_sec=0.01)
                 time.sleep(0.01)
 
-        ros_thread = threading.Thread(target=process_ros, daemon=True)
-        ros_thread.start()
-
+        threading.Thread(target=ros_spin, daemon=True).start()
         self.root.mainloop()
-
-        if hasattr(self, 'ros_thread') and self.ros_thread.is_alive():
-            self.ros_thread.join(timeout=1.0)
 
 
 def main(args=None):
     rclpy.init(args=args)
-
-    robot_control = RobotControlNode()
-
+    node = RobotControlNode()
     try:
-        robot_control.spin()
+        node.spin()
     except KeyboardInterrupt:
-        pass
+        node.get_logger().info("Shutting down.")
     finally:
-        robot_control.destroy_node()
+        node.destroy_node()
         rclpy.shutdown()
 
 
