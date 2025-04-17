@@ -167,8 +167,9 @@ class RobotControlNode(Node):
     def dock(self):
         msg = Twist()
         speed = self.speed_factor * 0.5
-
+        self.get_logger().info("dock avant while")
         while(self.moveList):
+            self.get_logger().info("dock dans while")
             move = self.moveList.pop()
             if (move == self.FORWARD):
                 msg.linear.x = speed
