@@ -116,7 +116,7 @@ class RobotControlNode(Node):
         if(msg.detections):
             self.get_logger().info(f"Détection de danger : {msg.detections}")
             self.get_logger().warn("Obstacle détecté ! Arrêt du robot.")
-    
+
     def control_cycle(self):
         msg = Twist()
         msg.linear.x = 0.0
@@ -126,46 +126,64 @@ class RobotControlNode(Node):
         msg.angular.y = 0.0
         msg.angular.z = 0.0
 
-        speed = self.speed_factor*0.5
-        if (self.state == States.STOP):
-            self.status_bar.config(text="Statut: Arrêt")
-            return
-
-        if (self.state == States.FORWARD):
+        def doForward():
             self.get_logger().info("Moving forward ...")
             msg.linear.x = speed
             msg.angular.z = 0.0
             self.cmd_vel_pub.publish(msg)
             self.status_bar.config(text=f"Statut: Avancer à {self.speed_var.get()}%")
             callback(self, msg)
-            return
-        
-        if (self.state == States.BACKWARD):
+
+        def doBackward():
             self.get_logger().info("Moving backward ...")
             msg.linear.x = -speed
             msg.angular.z = 0.0
             self.status_bar.config(text=f"Statut: Reculer à {self.speed_var.get()}%")
             self.cmd_vel_pub.publish(msg)
-            return
 
-        if (self.state == States.ROTATE_LEFT):
+        def doLeft():
             self.get_logger().info("Rotating left ...")
             msg.linear.x = 0.0
             msg.angular.z = 1.0
             self.status_bar.config(text=f"Statut: Tourner à gauche à {self.speed_var.get()}%")
             self.cmd_vel_pub.publish(msg)
-            return
 
-        if (self.state == States.ROTATE_RIGHT):
+        def doRight():
             self.get_logger().info("Rotating right ...")
             msg.linear.x = 0.0
             msg.angular.z = -1.0
             self.cmd_vel_pub.publish(msg)
             self.status_bar.config(text=f"Statut: Tourner à droite à {self.speed_var.get()}%")
+
+        speed = self.speed_factor*0.5
+        if (self.state == States.STOP):
+            self.status_bar.config(text="Statut: Arrêt")
+            return
+
+        if (self.state == States.FORWARD):
+            doForward()
+            return
+        
+        if (self.state == States.BACKWARD):
+            doBackward()
+            return
+
+        if (self.state == States.ROTATE_LEFT):
+            doLeft()
+            return
+
+        if (self.state == States.ROTATE_RIGHT):
+            doRight()
             return
         
         if (self.state == States.ROAMMING):
             self.get_logger().info("Roaming ...")
+            doForward()
+            doRight()
+            doForward()
+            doForward()
+            doLeft()
+            doForward()
         
             return
             
