@@ -32,7 +32,7 @@ class RobotControlNode(Node):
         # State variables
         self.fsm_state = 'undock'
         self.fsm_start_time = time.time()
-        self.avoid_timer = 0
+        self.avoiding = False
         self.manual_override = False
         self.manual_command = 'stop'
         self.speed_factor = 1.0
@@ -117,6 +117,7 @@ class RobotControlNode(Node):
                 return
             self.handle_fsm()
 
+
     def handle_manual_control(self):
         msg = Twist()
         speed = self.speed_factor * 0.5
@@ -132,6 +133,7 @@ class RobotControlNode(Node):
 
         self.cmd_vel_pub.publish(msg)
 
+
     def handle_fsm(self):
         twist = Twist()
         speed = self.speed_factor
@@ -141,22 +143,20 @@ class RobotControlNode(Node):
             self.is_undocking = True
 
         elif self.fsm_state == 'wander':
-            if time.time() - self.fsm_start_time > 20:  # Wander for 20s
+            if time.time() - self.fsm_start_time > 30:
                 self.fsm_state = 'dock'
                 self.status_bar.config(text="Statut: FSM → dock")
-                return
-            twist.linear.x = speed
-            self.cmd_vel_pub.publish(twist)
-            self.status_bar.config(text="Statut: FSM → avancer")
+            else:
+                # Normal forward movement
+                twist.linear.x = speed
+                self.cmd_vel_pub.publish(twist)
+                self.status_bar.config(text="Statut: FSM → avancer")
 
         elif self.fsm_state == 'avoid':
-            if time.time() < self.avoid_timer:
-                twist.angular.z = random.choice([-1.0, 1.0]) * speed
-                self.cmd_vel_pub.publish(twist)
-                self.status_bar.config(text="Statut: FSM → évitement")
-            else:
-                self.fsm_state = 'wander'
-                self.fsm_start_time = time.time()  # resume wander
+            # turn until danger is gone
+            twist.angular.z = random.choice([-1.0, 1.0]) * speed
+            self.cmd_vel_pub.publish(twist)
+            self.status_bar.config(text="Statut: FSM → évitement")
 
         elif self.fsm_state == 'dock':
             self.send_dock_goal()
@@ -209,28 +209,23 @@ class RobotControlNode(Node):
         self.send_undock_goal()
 
 
-    def hazard_callback(self, msg):
-        if self.manual_override:
-            return
-        if msg.detections and self.fsm_state == 'wander':
-            self.get_logger().warn("Hazard detected! Avoiding.")
-            self.stop_robot()
-            self.blocked = False  # Clear blocked
-            self.fsm_state = 'avoid'
-            self.avoid_timer = time.time() + 2.0
+    # def hazard_callback(self, msg):
+    #     if self.manual_override:
+    #         return
+    #     if msg.detections and self.fsm_state == 'wander':
+    #         self.get_logger().warn("Hazard detected! Avoiding.")
+    #         self.fsm_state = 'avoid'
 
 
     def ir_callback(self, msg):
         if self.manual_override:
             return
         for reading in msg.readings:
-            if reading.value > 1000 and self.fsm_state == 'wander':
+            if reading.value > 40 and self.fsm_state == 'wander':
                 self.get_logger().warn("High IR detected! Avoiding.")
-                self.stop_robot()
-                self.blocked = False
                 self.fsm_state = 'avoid'
-                self.avoid_timer = time.time() + 2.0
-                return
+            else: 
+                self.fsm_state = 'wander'
 
 
     def stop_robot(self):
