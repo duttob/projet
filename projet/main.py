@@ -184,7 +184,8 @@ class RobotControlNode(Node):
 
     def ir_callback(self, msg):
         for reading in msg.readings:
-            if reading.value > 1000:
+            self.get_logger().info(reading.value)
+            if reading.value > 10:
                 self.get_logger().warn("IR intense: stop")
                 self.stop_robot()
                 self.blocked = True
