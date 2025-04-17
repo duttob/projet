@@ -167,6 +167,11 @@ class RobotControlNode(Node):
     def dock(self):
         msg = Twist()
         speed = self.speed_factor * 0.5
+
+        msg.angular.x = 1
+        self.cmd_vel_pub.publish(msg)
+        time.sleep(300)
+
         self.get_logger().info("dock avant while")
         while(self.moveList):
             self.get_logger().info("dock dans while")
@@ -179,6 +184,8 @@ class RobotControlNode(Node):
                 msg.linear.x = -speed
             elif (move == self.RIGHT):
                 msg.angular.z = speed
+            self.cmd_vel_pub.publish(msg)
+            time.sleep(300)
 
         if not self.dock_client.wait_for_server(timeout_sec=2.0):
             self.get_logger().error("Dock server not available")
