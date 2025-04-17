@@ -191,7 +191,7 @@ class RobotControlNode(Node):
         result = future.result()
         self.get_logger().info("Undock terminé")
         self.status_bar.config(text="Statut: Undock terminé")
-        self.fsm_state = 'navigate'
+        self.fsm_state = 'wander'
 
 
     def dock(self):
