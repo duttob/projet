@@ -9,6 +9,8 @@ from std_msgs.msg import String
 from enum import Enum
 from irobot_create_msgs.action import Dock
 from rclpy.action import ActionClient
+from irobot_create_msgs.msg import HazardDetectionVector, IrIntensityVector  # Import IrIntensityVector
+from rclpy.qos import qos_profile_sensor_data
 
 class States(Enum):
     STOP = 0
@@ -18,6 +20,7 @@ class States(Enum):
     ROTATE_LEFT = 4
     DOCKING = 5
     UNDOCKING = 6
+    ROAMMING = 7
 
 class RobotControlNode(Node):
     def __init__(self):
@@ -30,6 +33,20 @@ class RobotControlNode(Node):
         self.timer = self.create_timer(0.25, self.control_cycle)
         
         self.dock_client = ActionClient(self, Dock, 'Robot4/dock')
+        self.undock_client = ActionClient(self, Undock, 'Robot4/undock')
+        
+        
+        self.hazard_subscriber = self.create_subscription(
+            HazardDetectionVector,
+            '/Robot4/hazard_detection',
+            self.hazard_callback,
+            qos_profile_sensor_data)
+        
+        self.ir_subscriber = self.create_subscription(
+            IrIntensityVector,
+            '/Robot4/ir_intensity',
+            self.ir_callback,
+            qos_profile_sensor_data)
         
         self.setup_gui()
         
@@ -58,7 +75,6 @@ class RobotControlNode(Node):
         
         fwd_btn = ttk.Button(dir_frame, text="▲", width=8, command=lambda: self.move("forward"))
         fwd_btn.grid(row=0, column=1, padx=10, pady=5)
-        
         mid_frame = tk.Frame(dir_frame, bg="#34495e")
         mid_frame.grid(row=1, column=0, columnspan=3)
         
@@ -118,6 +134,9 @@ class RobotControlNode(Node):
             msg.angular.z = 0.0
             self.cmd_vel_pub.publish(msg)
             self.status_bar.config(text=f"Statut: Avancer à {self.speed_var.get()}%")
+            if(msg.detections):
+                self.get_logger().info(f"Détection de danger : {msg.detections}")
+                self.get_logger().warn("Obstacle détecté ! Arrêt du robot.")
             return
         
         if (self.state == States.BACKWARD):
@@ -150,15 +169,33 @@ class RobotControlNode(Node):
                 self.get_logger().error("Dock action server not available!")
                 self.state = States.STOP
                 return
-
             goal_msg = Dock.Goal()
             self.get_logger().info("Sending docking request...")
-            goal= self.dock_client.send_goal_async(goal_msg)
+            self.dock_client.send_goal_async(goal_msg)
 
-            rclpy.spin_until_future_complete(self, goal)
-            
             self.state = States.STOP
+            
             return
+        if (self.state == States.UNDOCKING):
+            
+            self.get_logger().info("Undocking ...")
+            
+            if not self.dock_client.wait_for_server(timeout_sec=5.0):
+                self.get_logger().error("Dock action server not available!")
+                self.state = States.STOP
+                return
+            goal_msg = Undock.Goal()
+            self.get_logger().info("Sending undocking request...")
+            self.undock_client.send_goal_async(goal_msg)
+            self.state = States.STOP
+            
+            return
+        
+        if (self.state == States.ROAMMING):
+            self.get_logger().info("Roaming ...")
+        
+            return
+            
             
 
     def move(self, direction):
