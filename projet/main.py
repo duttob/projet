@@ -35,7 +35,10 @@ class RobotControlNode(Node):
         msg.angular.x = 0.0
         msg.angular.y = 0.0
         msg.angular.z = 0.0
-        self.timer = self.create_timer(0.25, self.control_cycle(msg))
+        
+        self.msgdections= HazardDetectionVector()
+        self.msgir= IrIntensityVector() 
+        self.timer = self.create_timer(0.25, self.control_cycle())
         
         self.dock_client = ActionClient(self, Dock, 'Robot4/dock')
         #self.undock_client = ActionClient(self,Undock, 'Robot4/undock')
@@ -120,7 +123,7 @@ class RobotControlNode(Node):
         for i in range(3):
             prog_frame.columnconfigure(i, weight=1)
             
-    def control_cycle(self,msg):
+    def control_cycle(self):
 
         speed = self.speed_factor*0.5
         if (self.state == States.STOP):
@@ -133,8 +136,8 @@ class RobotControlNode(Node):
             msg.angular.z = 0.0
             self.cmd_vel_pub.publish(msg)
             self.status_bar.config(text=f"Statut: Avancer à {self.speed_var.get()}%")
-            if(msg.detections):
-                self.get_logger().info(f"Détection de danger : {msg.detections}")
+            if(msgdections.detections):
+                self.get_logger().info(f"Détection de danger : {msgdections.detections}")
                 self.get_logger().warn("Obstacle détecté ! Arrêt du robot.")
     
             return
