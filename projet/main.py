@@ -80,7 +80,7 @@ class RobotControlNode(Node):
         self.speed_label = tk.Label(speed_frame, text="50%", bg="#34495e", fg="white")
         self.speed_label.pack(side=tk.LEFT, padx=5)
 
-        # Programmable buttons undock et dock
+        #Buttons undock et dock
         prog_frame = tk.LabelFrame(frame, text="Fonctions", bg="#34495e", fg="white")
         prog_frame.pack(fill=tk.X, padx=5, pady=5)
 
@@ -220,6 +220,7 @@ class RobotControlNode(Node):
         return
 
 
+    #Callback pour les capteurs infrarouges si intensité > 40 == proximité d'un obstacle alors change l'état de la FSM en 'avoid' sinon état 'wander'
     def ir_callback(self, msg):
         if self.manual_override:
             return

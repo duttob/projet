@@ -1,6 +1,6 @@
 # Projet Robotics
 
- Nous avons un nœud ROS2 qui contrôle un robot ICREATE 3 et il peut être set dans 2 modes: mode manuel ou autonome.
+ Nous avons un nœud qui contrôle le robot ICREATE 3 et il peut être mit dans 2 modes: mode manuel ou autonome.
  Une interface graphique (GUI) est également fournie pour permettre une interaction utilisateur intuitive.
 
 ## Fonctionnalités
